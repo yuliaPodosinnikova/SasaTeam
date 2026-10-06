@@ -1,5 +1,7 @@
 import customtkinter as ctk
 import random
+import os
+from PIL import Image
 from tkinter import messagebox
 import db
 from auth import AuthWindow
@@ -50,7 +52,7 @@ class NewYearMarketApp(ctk.CTk):
         self.draw_garland()
         self.animate_garland()
 
-        # 2. Шапка (Логотип "САСАТИМ")
+        # 2. Шапка
         self.header_frame = ctk.CTkFrame(self.main_container, fg_color="transparent")
         self.header_frame.pack(fill="x", padx=14, pady=(2, 6))
 
@@ -60,12 +62,10 @@ class NewYearMarketApp(ctk.CTk):
         self.hat_canvas = ctk.CTkCanvas(self.logo_box, width=42, height=18, bg=self.COLORS["BG"], highlightthickness=0)
         self.hat_canvas.pack(side="top", anchor="w")
 
-        # Шапка Деда Мороза
         self.hat_canvas.create_polygon(6, 15, 20, 2, 34, 15, fill="#7B180A", outline="")
         self.hat_canvas.create_oval(1, 12, 39, 18, fill="#FFFFFF", outline="")
         self.hat_canvas.create_oval(32, 2, 38, 8, fill="#FFFFFF", outline="")
 
-        # Кнопка САСАТИМ
         self.logo_btn = ctk.CTkButton(
             self.logo_box, text="САСАТИМ ❄️", width=110, height=36, 
             corner_radius=10, fg_color=self.COLORS["ACCENT"], hover_color="#520B01", 
@@ -74,7 +74,6 @@ class NewYearMarketApp(ctk.CTk):
         )
         self.logo_btn.pack(side="top")
 
-        # Правый блок шапки
         self.avatar_frame = ctk.CTkFrame(self.header_frame, fg_color="transparent")
         self.avatar_frame.pack(side="right", pady=(12, 0))
 
@@ -161,7 +160,6 @@ class NewYearMarketApp(ctk.CTk):
             )
             btn.pack(side="left", padx=4)
 
-        # Заголовки ленты
         ctk.CTkLabel(self.scroll_frame, text="Свежие предложения", font=("Arial", 10), text_color=self.COLORS["TEXT"]).pack(anchor="w", padx=14, pady=(4, 0))
         ctk.CTkLabel(self.scroll_frame, text="Лента объявлений", font=("Arial", 16, "bold"), text_color=self.COLORS["TEXT"]).pack(anchor="w", padx=14, pady=(0, 6))
 
@@ -170,19 +168,14 @@ class NewYearMarketApp(ctk.CTk):
         self.feed_container.pack(fill="x", padx=14, pady=0)
         self.render_feed()
 
-        # 8. Нижняя панель навигации
+        # 8. Нижняя панель
         self.bottom_bar = ctk.CTkFrame(self.main_container, fg_color=self.COLORS["CARD_BG"], height=58, corner_radius=0, border_width=1, border_color=self.COLORS["ACCENT"])
         self.bottom_bar.pack(fill="x", side="bottom")
 
         ctk.CTkButton(self.bottom_bar, text="🏠", width=40, height=40, fg_color="transparent", text_color=self.COLORS["TEXT"], font=("Arial", 18), command=self.build_main_interface).pack(side="left", expand=True, pady=6)
         ctk.CTkButton(self.bottom_bar, text="❤", width=40, height=40, fg_color="transparent", text_color=self.COLORS["TEXT"], font=("Arial", 16)).pack(side="left", expand=True, pady=6)
-        
-        # Центральная кнопка '+'
         ctk.CTkButton(self.bottom_bar, text="+", width=48, height=48, corner_radius=24, fg_color=self.COLORS["ACCENT"], hover_color="#520B01", text_color=self.COLORS["TEXT"], font=("Arial", 22, "bold"), command=self.open_create_ad_modal).pack(side="left", expand=True, pady=4)
-        
         ctk.CTkButton(self.bottom_bar, text="💬", width=40, height=40, fg_color="transparent", text_color=self.COLORS["TEXT"], font=("Arial", 16)).pack(side="left", expand=True, pady=6)
-        
-        # Кнопка Профиля
         ctk.CTkButton(self.bottom_bar, text="👤", width=40, height=40, fg_color="transparent", text_color=self.COLORS["TEXT"], font=("Arial", 16), command=self.show_profile_screen).pack(side="left", expand=True, pady=6)
 
     def select_category(self, cat):
@@ -197,9 +190,10 @@ class NewYearMarketApp(ctk.CTk):
             widget.destroy()
 
         search_query = self.search_entry.get().strip().lower() if hasattr(self, 'search_entry') else ""
+        all_ads = db.get_all_ads()
 
         filtered_ads = []
-        for ad in db.ads_data:
+        for ad in all_ads:
             match_cat = (self.selected_category == "Все ❄️" or ad["category"] == self.selected_category)
             match_search = (search_query in ad["title"].lower() or search_query in ad["description"].lower())
             if match_cat and match_search:
@@ -255,21 +249,31 @@ class NewYearMarketApp(ctk.CTk):
         profile_card = ctk.CTkFrame(self.scroll_frame, fg_color=self.COLORS["CARD_BG"], corner_radius=16, border_width=1, border_color=self.COLORS["ACCENT"])
         profile_card.pack(fill="x", padx=16, pady=10)
 
-        ctk.CTkLabel(profile_card, text="👤 Личный кабинет", font=("Arial", 16, "bold"), text_color=self.COLORS["TEXT"]).pack(pady=(15, 10))
-
         u = db.current_user["data"]
+        avatar_path = u.get("avatar", os.path.join("assets", "пончик.jpg"))
+
+        if os.path.exists(avatar_path):
+            img = Image.open(avatar_path)
+            avatar_image = ctk.CTkImage(light_image=img, dark_image=img, size=(80, 80))
+            avatar_label = ctk.CTkLabel(profile_card, image=avatar_image, text="")
+            avatar_label.pack(pady=(15, 5))
+        else:
+            ctk.CTkLabel(profile_card, text="👤", font=("Arial", 40)).pack(pady=(15, 5))
+
+        ctk.CTkLabel(profile_card, text=u['name'], font=("Arial", 16, "bold"), text_color=self.COLORS["TEXT"]).pack(pady=(0, 10))
+
         info_text = (
-            f"ФИО:  {u['name']}\n"
             f"Email:  {u['email']}\n"
             f"Логин:  {db.current_user['login']}\n"
             f"Роль:  {'Администратор' if u['role'] == 'admin' else 'Студент'}\n"
             f"Дата регистрации:  {u['date']}"
         )
-        ctk.CTkLabel(profile_card, text=info_text, font=("Arial", 11), text_color=self.COLORS["TEXT"], justify="left").pack(anchor="w", padx=20, pady=5)
+        ctk.CTkLabel(profile_card, text=info_text, font=("Arial", 11), text_color=self.COLORS["TEXT"], justify="left").pack(anchor="w", padx=20, pady=10)
 
         ctk.CTkLabel(self.scroll_frame, text="Мои объявления:", font=("Arial", 14, "bold"), text_color=self.COLORS["TEXT"]).pack(anchor="w", padx=16, pady=(15, 5))
 
-        my_ads = [ad for ad in db.ads_data if ad["seller_login"] == db.current_user["login"]]
+        all_ads = db.get_all_ads()
+        my_ads = [ad for ad in all_ads if ad["seller_login"] == db.current_user["login"]]
 
         if not my_ads:
             ctk.CTkLabel(self.scroll_frame, text="У вас нет опубликованных объявлений ❄️", font=("Arial", 11), text_color="#8C8373").pack(padx=16, pady=10)
@@ -287,7 +291,6 @@ class NewYearMarketApp(ctk.CTk):
                 btn_row = ctk.CTkFrame(content_box, fg_color="transparent")
                 btn_row.pack(fill="x", pady=(6, 0))
 
-                # Кнопки Редактировать и Удалить
                 ctk.CTkButton(
                     btn_row, text="✏️ Редактировать", width=110, height=26, fg_color=self.COLORS["ACCENT"], hover_color="#520B01",
                     text_color=self.COLORS["TEXT"], font=("Arial", 10, "bold"),
@@ -318,7 +321,7 @@ class NewYearMarketApp(ctk.CTk):
         entry_title.pack(fill="x", padx=12)
 
         ctk.CTkLabel(form, text="Категория:", font=("Arial", 11, "bold"), text_color=self.COLORS["TEXT"]).pack(anchor="w", padx=12, pady=(8, 2))
-        combo_cat = ctk.CTkOptionMenu(form, values=[c for c in db.categories_list if c != "Все ❄️"], fg_color=self.COLORS["BG"], button_color=self.COLORS["ACCENT"], text_color=self.COLORS["TEXT"])
+        combo_cat = ctk.CTkOptionMenu(form, values=[c for c in db.categories_list if c != "Все ❄️️"], fg_color=self.COLORS["BG"], button_color=self.COLORS["ACCENT"], text_color=self.COLORS["TEXT"])
         combo_cat.pack(fill="x", padx=12)
 
         ctk.CTkLabel(form, text="Цена (₽):", font=("Arial", 11, "bold"), text_color=self.COLORS["TEXT"]).pack(anchor="w", padx=12, pady=(8, 2))
@@ -335,23 +338,15 @@ class NewYearMarketApp(ctk.CTk):
                 messagebox.showwarning("Ошибка", "Заполните все поля!", parent=modal)
                 return
 
-            # Исправлена генерация уникального ID
-            new_id = max([ad["id"] for ad in db.ads_data], default=0) + 1
-
-            db.ads_data.insert(0, {
-                "id": new_id,
-                "title": t,
-                "category": combo_cat.get(),
-                "price": p if "₽" in p else f"{p} ₽",
-                "location": l,
-                "time": "Только что",
-                "seller_login": db.current_user["login"],
-                "seller_name": db.current_user["data"]["name"],
-                "rating": "5.0 ★",
-                "badge": "Новое ❄️️",
-                "description": ""
-            })
-            db.save_data() # Сохранение изменений в JSON
+            p_formatted = p if "₽" in p else f"{p} ₽"
+            db.add_ad(
+                title=t,
+                category=combo_cat.get(),
+                price=p_formatted,
+                location=l,
+                seller_login=db.current_user["login"],
+                seller_name=db.current_user["data"]["name"]
+            )
             modal.destroy()
             self.render_feed()
 
@@ -365,7 +360,7 @@ class NewYearMarketApp(ctk.CTk):
         modal.configure(fg_color=self.COLORS["BG"])
         modal.grab_set()
 
-        ctk.CTkLabel(modal, text="✏️ Редактирование", font=("Arial", 16, "bold"), text_color=self.COLORS["TEXT"]).pack(pady=12)
+        ctk.CTkLabel(modal, text="✏ Редактирование", font=("Arial", 16, "bold"), text_color=self.COLORS["TEXT"]).pack(pady=12)
 
         form = ctk.CTkFrame(modal, fg_color=self.COLORS["CARD_BG"], corner_radius=12, border_width=1, border_color=self.COLORS["ACCENT"])
         form.pack(fill="both", expand=True, padx=16, pady=(0, 16))
@@ -395,12 +390,8 @@ class NewYearMarketApp(ctk.CTk):
             if not (t and p and l):
                 messagebox.showwarning("Ошибка", "Заполните все поля!", parent=modal)
                 return
-            ad["title"] = t
-            ad["category"] = combo_cat.get()
-            ad["price"] = p if "₽" in p else f"{p} ₽"
-            ad["location"] = l
-            
-            db.save_data() # Сохранение изменений в JSON
+            p_formatted = p if "₽" in p else f"{p} ₽"
+            db.update_ad(ad["id"], t, combo_cat.get(), p_formatted, l)
             modal.destroy()
             messagebox.showinfo("Успех", "Объявление обновлено!")
             self.show_profile_screen()
@@ -409,8 +400,7 @@ class NewYearMarketApp(ctk.CTk):
 
     def delete_ad(self, ad_id, from_profile=False):
         if messagebox.askyesno("Удаление", f"Удалить объявление #{ad_id}?"):
-            db.ads_data = [a for a in db.ads_data if a["id"] != ad_id]
-            db.save_data() # Сохранение после удаления
+            db.delete_ad(ad_id)
             if from_profile:
                 self.show_profile_screen()
             else:

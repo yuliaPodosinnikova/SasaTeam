@@ -1,93 +1,135 @@
-import json
+import sqlite3
 import os
 
-DB_FILE = "data.json"
+DB_PATH = "market.db"
 
-# Начальные данные по умолчанию
-default_users = {
-    "student": {
-        "password": "123",
-        "role": "student",
-        "name": "Данил К.",
-        "email": "student@univ.edu",
-        "date": "01.12.2025"
-    },
-    "admin": {
-        "password": "admin123",
-        "role": "admin",
-        "name": "Главный Администратор",
-        "email": "admin@univ.edu",
-        "date": "01.09.2025"
-    }
-}
+def get_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row  # Позволяет обращаться к полям по имени (like dict)
+    return conn
 
-categories_list = ["Все ❄️", "Учебники", "Электроника", "Конспекти", "Вещи", "Услуги", "Праздник"]
+def init_db():
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        # Таблица пользователей
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                login TEXT PRIMARY KEY,
+                password TEXT NOT NULL,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                role TEXT NOT NULL,
+                date TEXT NOT NULL,
+                avatar TEXT
+            )
+        """)
+        
+        # Таблица объявлений
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                category TEXT NOT NULL,
+                price TEXT NOT NULL,
+                location TEXT NOT NULL,
+                time TEXT NOT NULL,
+                seller_login TEXT NOT NULL,
+                seller_name TEXT NOT NULL,
+                rating TEXT DEFAULT '5.0 ★',
+                badge TEXT DEFAULT 'Новое ❄',
+                description TEXT DEFAULT '',
+                FOREIGN KEY (seller_login) REFERENCES users (login)
+            )
+        """)
+        
+        # Добавляем тестовых пользователей, если база пустая
+        cursor.execute("SELECT COUNT(*) FROM users")
+        if cursor.fetchone()[0] == 0:
+            default_avatar = os.path.join("assets", "пончик.jpg")
+            cursor.executemany("""
+                INSERT INTO users (login, password, name, email, role, date, avatar)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, [
+                ("admin", "1234", "Главный Админ", "admin@study.ru", "admin", "01.01.2025", default_avatar),
+                ("student", "1234", "Иван Иванов", "student@study.ru", "student", "15.01.2025", default_avatar)
+            ])
+            
+            # Добавляем стартовые объявления
+            cursor.executemany("""
+                INSERT INTO ads (title, category, price, location, time, seller_login, seller_name, rating, badge, description)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, [
+                ("Конспекты по высшей математике", "Учеба 📚", "300 ₽", "Корпус А", "10 минут назад", "student", "Иван Иванов", "5.0 ★", "Хит ❄", "Полный курс за 1 семестр с решениями."),
+                ("Ноутбук для учебы", "Электроника 💻", "15000 ₽", "Общежитие №2", "1 час назад", "admin", "Главный Админ", "4.9 ★", "Торг", "В хорошем состоянии, подходит для написания кода.")
+            ])
+        conn.commit()
 
-default_ads = [
-    {
-        "id": 1,
-        "title": "MacBook Air M1, 2020",
-        "category": "Электроника",
-        "price": "62 000 ₽",
-        "location": "Главный корпус",
-        "time": "12 мин. назад",
-        "seller_login": "student",
-        "seller_name": "Данил К.",
-        "rating": "4.9 ★",
-        "badge": "Отличное состояние ❄️",
-        "description": "Ноутбук в отличном состоянии, полный комплект. Использовался для учебы."
-    },
-    {
-        "id": 2,
-        "title": "Комплект учебников по вышмату",
-        "category": "Учебники",
-        "price": "1 800 ₽",
-        "location": "Общежитие №3",
-        "time": "35 мин. назад",
-        "seller_login": "alina",
-        "seller_name": "Алина М.",
-        "rating": "5.0 ★",
-        "badge": "Зимняя скидка",
-        "description": "Учебники за 1-2 курс. Состояние хорошее, все страницы целы."
-    }
-]
+categories_list = ["Все ❄️", "Учеба 📚", "Электроника 💻", "Одежда 👕", "Услуги 🛠", "Разное 🎁"]
 
-# Текущий авторизованный пользователь в памяти
-current_user = {
-    "login": None,
-    "data": None
-}
+current_user = None  # Глобальное хранение авторизованного юзера
 
-def load_data():
-    """Загрузка данных из файла JSON при запуске приложения."""
-    global users_db, ads_data
-    if os.path.exists(DB_FILE):
-        try:
-            with open(DB_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                users_db = data.get("users", default_users)
-                ads_data = data.get("ads", default_ads)
-                return
-        except Exception as e:
-            print(f"Ошибка загрузки базы данных: {e}")
-    
-    users_db = default_users
-    ads_data = default_ads
-    save_data()
+# Функции-хелперы для работы с БД
 
-def save_data():
-    """Сохранение изменений в файл JSON."""
-    data = {
-        "users": users_db,
-        "ads": ads_data
-    }
+def authenticate(login, password):
+    global current_user
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE login = ? AND password = ?", (login, password))
+        row = cursor.fetchone()
+        if row:
+            user_dict = dict(row)
+            current_user = {
+                "login": user_dict["login"],
+                "data": user_dict
+            }
+            return True
+    return False
+
+def register_user(login, password, name, email, role="student"):
+    default_avatar = os.path.join("assets", "пончик.jpg")
     try:
-        with open(DB_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        print(f"Ошибка сохранения базы данных: {e}")
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO users (login, password, name, email, role, date, avatar)
+                VALUES (?, ?, ?, ?, ?, '01.02.2025', ?)
+            """, (login, password, name, email, role, default_avatar))
+            conn.commit()
+            return True
+    except sqlite3.IntegrityError:
+        return False  # Логин уже занят
 
-# Инициализация переменных базы
-users_db = {}
-ads_data = []
-load_data()
+def get_all_ads():
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM ads ORDER BY id DESC")
+        return [dict(row) for row in cursor.fetchall()]
+
+def add_ad(title, category, price, location, seller_login, seller_name, description=""):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO ads (title, category, price, location, time, seller_login, seller_name, description)
+            VALUES (?, ?, ?, ?, 'Только что', ?, ?, ?)
+        """, (title, category, price, location, seller_login, seller_name, description))
+        conn.commit()
+
+def update_ad(ad_id, title, category, price, location):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE ads 
+            SET title = ?, category = ?, price = ?, location = ?
+            WHERE id = ?
+        """, (title, category, price, location, ad_id))
+        conn.commit()
+
+def delete_ad(ad_id):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM ads WHERE id = ?", (ad_id,))
+        conn.commit()
+
+# Инициализируем базу при импорте модуля
+init_db()
